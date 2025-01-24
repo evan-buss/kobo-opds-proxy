@@ -16,6 +16,10 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+
+	"golang.org/x/text/transform"
+	"golang.org/x/text/unicode/norm"
 
 	"github.com/evan-buss/opds-proxy/convert"
 	"github.com/evan-buss/opds-proxy/html"
@@ -449,7 +453,7 @@ func sendConvertedFile(w http.ResponseWriter, filePath string) error {
 	w.Header().Set("Content-Disposition",
 		mime.FormatMediaType(
 			"attachment",
-			map[string]string{"filename": filepath.Base(filePath)},
+			map[string]string{"filename": filenameToAscii7(filepath.Base(filePath))},
 		),
 	)
 	w.Header().Set("Content-Type", mime.TypeByExtension(filepath.Ext(filePath)))
@@ -460,4 +464,26 @@ func sendConvertedFile(w http.ResponseWriter, filePath string) error {
 	}
 
 	return nil
+}
+
+func isMn(r rune) bool {
+	return unicode.Is(unicode.Mn, r) // Mn: nonspacing marks
+}
+
+func filenameToAscii7(s string) string {
+	// Remove most diacritics
+	t := transform.Chain(norm.NFD, transform.RemoveFunc(isMn), norm.NFC)
+	noDiacr, _, _ := transform.String(t, s)
+
+	// Convert the rest of non-ASCII7 to hex representation
+	var sb strings.Builder
+	for _, letter := range noDiacr {
+		if letter > 0x7F {
+			sb.WriteString(fmt.Sprintf("_%X", letter))
+		} else {
+			sb.WriteRune(letter)
+		}
+	}
+
+	return sb.String()
 }
